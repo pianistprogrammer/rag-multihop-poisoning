@@ -16,7 +16,7 @@ index_cache/
 *.pickle
 data/
 datasets/
-models/
+/models/
 checkpoints/
 *.parquet
 *.arrow

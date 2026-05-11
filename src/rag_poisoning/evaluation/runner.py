@@ -247,12 +247,22 @@ class ExperimentRunner:
             except Exception as e:
                 logger.warning(f"Failed to load cached index: {e}")
                 logger.info(f"Rebuilding index for {config.dataset_name}...")
-                self.retriever.build_index(dataset.corpus, chunk_size=100)
+                self.retriever.build_index(
+                    dataset.corpus,
+                    chunk_size=100,
+                    cache_dir=str(index_cache_path),
+                    save_every=10000,
+                )
                 self.retriever.save_index(str(index_cache_path))
                 logger.info(f"✓ Index cached to {index_cache_path}")
         else:
             logger.info(f"Building index for {config.dataset_name}...")
-            self.retriever.build_index(dataset.corpus, chunk_size=100)
+            self.retriever.build_index(
+                dataset.corpus,
+                chunk_size=100,
+                cache_dir=str(index_cache_path),
+                save_every=10000,
+            )
             self.retriever.save_index(str(index_cache_path))
             logger.info(f"✓ Index cached to {index_cache_path}")
 

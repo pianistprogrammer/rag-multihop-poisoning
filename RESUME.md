@@ -52,37 +52,51 @@ Restart:
 
 **This means**: You can safely interrupt at ANY time and lose at most 9 queries worth of work!
 
-### Level 3: FAISS Index Caching (NEW)
+### Level 3: FAISS Index Caching with Incremental Encoding (NEW)
 
-**The slowest part** of setup is building the FAISS index (encoding millions of documents). This now gets cached:
+**The slowest part** of setup is building the FAISS index (encoding millions of documents). This now has two-level protection:
 
-1. **Per-dataset Caching**: Each dataset's index is cached separately to `results/index_cache/{dataset_name}/`
+1. **Incremental Encoding**: During index building, progress is saved every 10,000 passages
+   - Passage 10,000 → ✓ Partial cache saved
+   - Passage 20,000 → ✓ Partial cache saved
+   - ... continues until all passages encoded
+   - **If interrupted**: Resume from last 10,000-passage checkpoint
+
+2. **Final Index Caching**: Complete index cached per dataset to `results/index_cache/{dataset_name}/`
    - `nq` index: ~3.5M passages, ~2-3 hours to build
    - `hotpotqa` index: ~400 passages, ~30 seconds
    - `2wikimultihop` index: ~400 passages, ~30 seconds
    - `musique` index: ~4K passages, ~2 minutes
 
-2. **Automatic Reuse**: When running experiments:
-   - First run on dataset → builds index + saves to cache
-   - Subsequent runs → loads from cache (instant!)
-   - Applies to all experiments using that dataset
+3. **Automatic Resume**: When building an index:
+   - Check if partial cache exists (e.g., 50,000/3.5M passages done)
+   - Load partial embeddings
+   - Continue encoding from passage 50,001
+   - Keep saving every 10,000 passages
 
-3. **One-time Cost**: The 2-3 hour index build for NQ happens only once, then is reused forever
+4. **Maximum Loss**: At most 9,999 passages worth of encoding (~5-10 minutes for NQ)
 
-**Example**:
+**Example (NQ dataset with 3.5M passages)**:
 ```
-First run:
-  └─ Building index for nq... (2.5 hours)
-  └─ ✓ Index cached to results/index_cache/nq/
+First attempt:
+  └─ Encoding: 10,000 passages → ✓ Saved
+  └─ Encoding: 20,000 passages → ✓ Saved
+  └─ Encoding: 30,000 passages → ✓ Saved
+  └─ [INTERRUPT - Ctrl+C at 31%]
+
+Resume (automatic):
+  └─ Found partial cache: 30,000/3.5M passages
+  └─ Loading cached embeddings...
+  └─ Continuing from passage 30,001
+  └─ Encoding: 40,000 passages → ✓ Saved
+  └─ ...
+  └─ All 3.5M encoded → ✓ Final index cached
   
-Second run (any experiment using NQ):
-  └─ Loading cached index for nq... (2 seconds) ✓
-  
-All future runs:
-  └─ Loading cached index (instant) ✓
+Future runs:
+  └─ Loading cached index... (2 seconds) ✓
 ```
 
-**This solves**: The 2h 50min you just lost rebuilding the NQ index - it will now be reused!
+**This solves**: You can now safely interrupt even during the 2-3 hour encoding phase!
 
 ## Checkpoint File Structure
 
