@@ -13,18 +13,43 @@ The experiment runner supports automatic checkpointing and resume functionality 
 2. **Resume on Restart**: If you re-run the experiment grid, it automatically detects completed experiments and skips them
 3. **Progress Preservation**: All metrics and results are preserved in the checkpoint file
 
-### Level 2: Poison Passage Caching (NEW)
+### Level 2: Incremental Poison Passage Caching (NEW)
 
 **The slow part** of each experiment is generating poisoned passages (the batch processing you see). To protect against losing this progress:
 
-1. **Automatic Caching**: After generating poisoned passages for an experiment, they're cached to `results/poison_cache/{dataset}_{attack}_{num_poisoned}_{num_queries}.json`
-2. **Reuse on Restart**: If the experiment is interrupted during the RAG pipeline phase, restarting will:
-   - Load cached poisoned passages (instant)
-   - Skip the slow generation phase
-   - Continue with the RAG evaluation
-3. **Per-configuration Cache**: Each unique combination of (dataset, attack, num_poisoned, num_queries) gets its own cache file
+1. **Incremental Caching**: Poisoned passages are saved **every 10 queries** (not just at the end)
+   - After query 10 → cache saved ✓
+   - After query 20 → cache saved ✓
+   - After query 30 → cache saved ✓
+   - ... continues until all 200 queries done
 
-**This means**: Even if you stop the process at 29% batches, the next time you run that experiment configuration, it will use the cache and skip directly to where it was interrupted!
+2. **Automatic Resume**: If interrupted mid-generation:
+   - Loads partial cache (e.g., 60 queries completed)
+   - Skips already-completed queries
+   - Continues from query 61
+   - Keeps saving every 10 queries
+
+3. **Cache Location**: `results/poison_cache/{dataset}_{attack}_{num_poisoned}_{num_queries}.json`
+
+4. **Maximum Loss**: At most 9 queries worth of work (if interrupted between saves)
+
+**Example**:
+```
+Generating poisoned passages: 100%|████| 200/200
+  └─ Query 10 → ✓ Cache saved (partial 10/200)
+  └─ Query 20 → ✓ Cache saved (partial 20/200)
+  └─ Query 30 → ✓ Cache saved (partial 30/200)
+  └─ [INTERRUPT HERE - Ctrl+C]
+  
+Restart:
+  └─ Load cache (30/200 queries)
+  └─ Skip queries 1-30
+  └─ Continue from query 31
+  └─ Query 40 → ✓ Cache saved (partial 40/200)
+  └─ ...
+```
+
+**This means**: You can safely interrupt at ANY time and lose at most 9 queries worth of work!
 
 ## Checkpoint File Structure
 

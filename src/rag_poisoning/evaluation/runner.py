@@ -188,20 +188,27 @@ class ExperimentRunner:
         try:
             with open(cache_path) as f:
                 cache = json.load(f)
-                logger.info(f"Loaded poisoned passages from cache: {cache_path.name}")
+                num_queries = len(cache.get("target_answers", []))
+                logger.info(
+                    f"Loaded poisoned passages from cache: {cache_path.name} "
+                    f"({num_queries}/{config.num_queries} queries)"
+                )
                 return cache
         except Exception as e:
             logger.warning(f"Failed to load poison cache: {e}")
             return None
 
-    def _save_poison_cache(self, config: ExperimentConfig, data: Dict):
+    def _save_poison_cache(self, config: ExperimentConfig, data: Dict, partial: bool = False):
         """Save poisoned passages to cache."""
         cache_path = self._get_poison_cache_path(config)
 
         try:
             with open(cache_path, "w") as f:
                 json.dump(data, f, indent=2)
-            logger.info(f"Saved poisoned passages to cache: {cache_path.name}")
+
+            num_queries = len(data.get("target_answers", []))
+            status = f"partial {num_queries}/{config.num_queries}" if partial else "complete"
+            logger.info(f"Saved poisoned passages to cache: {cache_path.name} ({status})")
         except Exception as e:
             logger.warning(f"Failed to save poison cache: {e}")
 
@@ -246,14 +253,77 @@ class ExperimentRunner:
             poisoned_passages_all = poison_cache["poisoned_passages"]
             poisoned_doc_ids_per_query = poison_cache["poisoned_doc_ids_per_query"]
             target_answers = poison_cache["target_answers"]
-            logger.info("Using cached poisoned passages - skipping generation")
+
+            # Check if cache is complete
+            cached_queries = len(target_answers)
+            if cached_queries >= config.num_queries:
+                logger.info(
+                    f"Using complete cached poisoned passages ({cached_queries} queries)"
+                )
+            else:
+                logger.info(
+                    f"Using partial cached poisoned passages ({cached_queries}/{config.num_queries} queries) - "
+                    f"will continue generation from query {cached_queries}"
+                )
+
+                # Get already processed query IDs
+                processed_query_ids = query_ids[:cached_queries]
+                remaining_query_ids = query_ids[cached_queries:]
+
+                # Continue generation for remaining queries
+                for idx, query_id in enumerate(
+                    tqdm(remaining_query_ids, desc="Continuing poisoned passage generation")
+                ):
+                    query = dataset.queries[query_id]
+
+                    # Get ground truth answer
+                    if query_id in dataset.qrels and dataset.qrels[query_id]:
+                        gt_doc_id = list(dataset.qrels[query_id].keys())[0]
+                        gt_doc = dataset.corpus.get(gt_doc_id, {})
+                        target_answer = gt_doc.get("text", "Unknown")[:100]
+                    else:
+                        target_answer = "Synthetic target answer"
+
+                    target_answers.append(target_answer)
+
+                    # Generate poisoned passages
+                    poisoned_passages = attack.generate_poisoned_passages(
+                        query=query,
+                        target_answer=target_answer,
+                        corpus=dataset.corpus,
+                        num_passages=config.num_poisoned,
+                    )
+
+                    # Track poisoned doc IDs
+                    poisoned_doc_ids_per_query.append(list(poisoned_passages.keys()))
+
+                    # Add to global dict
+                    poisoned_passages_all.update(poisoned_passages)
+
+                    # Save incrementally every 10 queries
+                    if (idx + 1) % 10 == 0 or (idx + 1) == len(remaining_query_ids):
+                        cache_data = {
+                            "poisoned_passages": poisoned_passages_all,
+                            "poisoned_doc_ids_per_query": poisoned_doc_ids_per_query,
+                            "target_answers": target_answers,
+                            "config": {
+                                "dataset": config.dataset_name,
+                                "attack": config.attack_name,
+                                "num_poisoned": config.num_poisoned,
+                                "num_queries": config.num_queries,
+                            },
+                        }
+                        is_partial = len(target_answers) < config.num_queries
+                        self._save_poison_cache(config, cache_data, partial=is_partial)
         else:
-            # Generate poisoned passages (this is the slow part)
+            # Generate poisoned passages from scratch
             poisoned_passages_all = {}
             poisoned_doc_ids_per_query = []
             target_answers = []
 
-            for query_id in tqdm(query_ids, desc="Generating poisoned passages"):
+            for idx, query_id in enumerate(
+                tqdm(query_ids, desc="Generating poisoned passages")
+            ):
                 query = dataset.queries[query_id]
 
                 # Get ground truth answer (from first relevant doc)
@@ -281,19 +351,21 @@ class ExperimentRunner:
                 # Add to global dict
                 poisoned_passages_all.update(poisoned_passages)
 
-            # Cache the generated poisoned passages
-            cache_data = {
-                "poisoned_passages": poisoned_passages_all,
-                "poisoned_doc_ids_per_query": poisoned_doc_ids_per_query,
-                "target_answers": target_answers,
-                "config": {
-                    "dataset": config.dataset_name,
-                    "attack": config.attack_name,
-                    "num_poisoned": config.num_poisoned,
-                    "num_queries": config.num_queries,
-                },
-            }
-            self._save_poison_cache(config, cache_data)
+                # Save incrementally every 10 queries
+                if (idx + 1) % 10 == 0 or (idx + 1) == config.num_queries:
+                    cache_data = {
+                        "poisoned_passages": poisoned_passages_all,
+                        "poisoned_doc_ids_per_query": poisoned_doc_ids_per_query,
+                        "target_answers": target_answers,
+                        "config": {
+                            "dataset": config.dataset_name,
+                            "attack": config.attack_name,
+                            "num_poisoned": config.num_poisoned,
+                            "num_queries": config.num_queries,
+                        },
+                    }
+                    is_partial = len(target_answers) < config.num_queries
+                    self._save_poison_cache(config, cache_data, partial=is_partial)
 
         # Inject poisoned passages into retriever
         logger.info(f"Injecting {len(poisoned_passages_all)} poisoned passages...")
