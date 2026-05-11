@@ -1,5 +1,6 @@
 # Results only (datasets are centralized at /Volumes/LLModels/Datasets/RAG/)
 results/
+poison_cache/
 
 # Large files - models and datasets
 *.pt

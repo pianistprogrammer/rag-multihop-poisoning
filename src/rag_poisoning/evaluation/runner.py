@@ -139,14 +139,16 @@ class ExperimentRunner:
             logger.warning(f"Failed to load checkpoint: {e}")
             return set()
 
-    def _save_checkpoint(self, experiment_id: str):
+    def _save_checkpoint(self, experiment_id: str, partial: bool = False):
         """
         Save checkpoint after completing an experiment.
 
         Args:
             experiment_id: ID of completed experiment
+            partial: If True, saves as partial (in-progress) checkpoint
         """
-        self.completed_experiments.add(experiment_id)
+        if not partial:
+            self.completed_experiments.add(experiment_id)
 
         checkpoint = {
             "completed_experiments": list(self.completed_experiments),
@@ -154,11 +156,54 @@ class ExperimentRunner:
             "last_updated": time.time(),
         }
 
+        # Add partial status if in-progress
+        if partial:
+            checkpoint["partial_experiment"] = experiment_id
+
         try:
             with open(self.checkpoint_file, "w") as f:
                 json.dump(checkpoint, f, indent=2)
+            logger.debug(f"Checkpoint saved: {experiment_id} (partial={partial})")
         except Exception as e:
             logger.error(f"Failed to save checkpoint: {e}")
+
+    def _get_poison_cache_path(self, config: ExperimentConfig) -> Path:
+        """Get cache file path for poisoned passages."""
+        cache_dir = self.output_dir / "poison_cache"
+        cache_dir.mkdir(exist_ok=True)
+
+        cache_file = (
+            f"{config.dataset_name}_{config.attack_name}_"
+            f"{config.num_poisoned}_{config.num_queries}.json"
+        )
+        return cache_dir / cache_file
+
+    def _load_poison_cache(self, config: ExperimentConfig) -> Optional[Dict]:
+        """Load cached poisoned passages if available."""
+        cache_path = self._get_poison_cache_path(config)
+
+        if not cache_path.exists():
+            return None
+
+        try:
+            with open(cache_path) as f:
+                cache = json.load(f)
+                logger.info(f"Loaded poisoned passages from cache: {cache_path.name}")
+                return cache
+        except Exception as e:
+            logger.warning(f"Failed to load poison cache: {e}")
+            return None
+
+    def _save_poison_cache(self, config: ExperimentConfig, data: Dict):
+        """Save poisoned passages to cache."""
+        cache_path = self._get_poison_cache_path(config)
+
+        try:
+            with open(cache_path, "w") as f:
+                json.dump(data, f, indent=2)
+            logger.info(f"Saved poisoned passages to cache: {cache_path.name}")
+        except Exception as e:
+            logger.warning(f"Failed to save poison cache: {e}")
 
     def run_single_experiment(
         self, config: ExperimentConfig
@@ -193,38 +238,62 @@ class ExperimentRunner:
         attack = self.attacks[config.attack_name]
         defense = self.defenses[config.defense_name]
 
-        # Generate poisoned passages
-        poisoned_passages_all = {}
-        poisoned_doc_ids_per_query = []
-        target_answers = []
+        # Try to load cached poisoned passages
+        poison_cache = self._load_poison_cache(config)
 
-        for query_id in tqdm(query_ids, desc="Generating poisoned passages"):
-            query = dataset.queries[query_id]
+        if poison_cache:
+            # Use cached data
+            poisoned_passages_all = poison_cache["poisoned_passages"]
+            poisoned_doc_ids_per_query = poison_cache["poisoned_doc_ids_per_query"]
+            target_answers = poison_cache["target_answers"]
+            logger.info("Using cached poisoned passages - skipping generation")
+        else:
+            # Generate poisoned passages (this is the slow part)
+            poisoned_passages_all = {}
+            poisoned_doc_ids_per_query = []
+            target_answers = []
 
-            # Get ground truth answer (from first relevant doc)
-            if query_id in dataset.qrels and dataset.qrels[query_id]:
-                gt_doc_id = list(dataset.qrels[query_id].keys())[0]
-                gt_doc = dataset.corpus.get(gt_doc_id, {})
-                # Use first sentence of ground truth as target
-                target_answer = gt_doc.get("text", "Unknown")[:100]
-            else:
-                target_answer = "Synthetic target answer"
+            for query_id in tqdm(query_ids, desc="Generating poisoned passages"):
+                query = dataset.queries[query_id]
 
-            target_answers.append(target_answer)
+                # Get ground truth answer (from first relevant doc)
+                if query_id in dataset.qrels and dataset.qrels[query_id]:
+                    gt_doc_id = list(dataset.qrels[query_id].keys())[0]
+                    gt_doc = dataset.corpus.get(gt_doc_id, {})
+                    # Use first sentence of ground truth as target
+                    target_answer = gt_doc.get("text", "Unknown")[:100]
+                else:
+                    target_answer = "Synthetic target answer"
 
-            # Generate poisoned passages for this query
-            poisoned_passages = attack.generate_poisoned_passages(
-                query=query,
-                target_answer=target_answer,
-                corpus=dataset.corpus,
-                num_passages=config.num_poisoned,
-            )
+                target_answers.append(target_answer)
 
-            # Track poisoned doc IDs
-            poisoned_doc_ids_per_query.append(list(poisoned_passages.keys()))
+                # Generate poisoned passages for this query
+                poisoned_passages = attack.generate_poisoned_passages(
+                    query=query,
+                    target_answer=target_answer,
+                    corpus=dataset.corpus,
+                    num_passages=config.num_poisoned,
+                )
 
-            # Add to global dict
-            poisoned_passages_all.update(poisoned_passages)
+                # Track poisoned doc IDs
+                poisoned_doc_ids_per_query.append(list(poisoned_passages.keys()))
+
+                # Add to global dict
+                poisoned_passages_all.update(poisoned_passages)
+
+            # Cache the generated poisoned passages
+            cache_data = {
+                "poisoned_passages": poisoned_passages_all,
+                "poisoned_doc_ids_per_query": poisoned_doc_ids_per_query,
+                "target_answers": target_answers,
+                "config": {
+                    "dataset": config.dataset_name,
+                    "attack": config.attack_name,
+                    "num_poisoned": config.num_poisoned,
+                    "num_queries": config.num_queries,
+                },
+            }
+            self._save_poison_cache(config, cache_data)
 
         # Inject poisoned passages into retriever
         logger.info(f"Injecting {len(poisoned_passages_all)} poisoned passages...")

@@ -1,12 +1,30 @@
 # Resume Functionality
 
-The experiment runner now supports automatic checkpointing and resume functionality.
+The experiment runner supports automatic checkpointing and resume functionality with two levels of protection:
+
+1. **Experiment-level checkpoints**: After each complete experiment
+2. **Poison passage caching**: Saves generated poisoned passages to avoid regenerating them
 
 ## How It Works
+
+### Level 1: Experiment-level Checkpoints
 
 1. **Automatic Checkpointing**: After each experiment completes successfully, a checkpoint is saved to `results/checkpoint.json`
 2. **Resume on Restart**: If you re-run the experiment grid, it automatically detects completed experiments and skips them
 3. **Progress Preservation**: All metrics and results are preserved in the checkpoint file
+
+### Level 2: Poison Passage Caching (NEW)
+
+**The slow part** of each experiment is generating poisoned passages (the batch processing you see). To protect against losing this progress:
+
+1. **Automatic Caching**: After generating poisoned passages for an experiment, they're cached to `results/poison_cache/{dataset}_{attack}_{num_poisoned}_{num_queries}.json`
+2. **Reuse on Restart**: If the experiment is interrupted during the RAG pipeline phase, restarting will:
+   - Load cached poisoned passages (instant)
+   - Skip the slow generation phase
+   - Continue with the RAG evaluation
+3. **Per-configuration Cache**: Each unique combination of (dataset, attack, num_poisoned, num_queries) gets its own cache file
+
+**This means**: Even if you stop the process at 29% batches, the next time you run that experiment configuration, it will use the cache and skip directly to where it was interrupted!
 
 ## Checkpoint File Structure
 
@@ -70,6 +88,14 @@ If you want to start completely fresh:
 ```bash
 rm results/checkpoint.json
 rm results/all_results.json
+```
+
+### Clear Poison Cache
+
+If you want to regenerate poisoned passages (e.g., after changing attack code):
+
+```bash
+rm -rf results/poison_cache/
 ```
 
 ### Resume from Partial Checkpoint
