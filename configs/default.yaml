@@ -1,0 +1,87 @@
+# Default configuration for RAG poisoning experiments
+# Based on PoisonedRAG paper setup
+
+# Paths
+paths:
+  data_dir: "/Volumes/LLModels/Datasets/RAG"  # Centralized dataset directory
+  output_dir: "./results"  # Relative to project root
+
+# Dataset settings
+dataset:
+  name: "nq"  # nq, hotpotqa, 2wikimultihop, musique
+  num_queries: 200  # Number of targeted queries to evaluate
+  chunk_size: 100  # Words per passage chunk
+
+# Retrieval settings
+retrieval:
+  model_name: "facebook/contriever-msmarco"
+  top_k: 5  # Number of passages to retrieve per query
+  index_type: "flat"  # FAISS index type (flat, hnsw)
+  use_bm25: false  # Whether to use hybrid retrieval with BM25
+
+# Generation settings
+generation:
+  model_name: "mistral:7b-instruct"  # Ollama model name
+  temperature: 0.1
+  max_tokens: 256
+  num_ctx: 4096  # Context window size
+
+# Attack settings
+attack:
+  type: "poisonedrag"  # poisonedrag, corruptrag, pidp, coe
+  adv_per_query: 5  # Number of poisoned passages per query
+
+  # PoisonedRAG specific
+  poisonedrag:
+    num_iter: 100  # Optimization iterations
+    learning_rate: 0.01
+
+  # Chain-of-Evidence specific
+  coe:
+    num_premises: 2
+    add_authority: true
+    perplexity_threshold: 100.0  # Max perplexity for stealthiness
+
+# Defense settings
+defense:
+  type: null  # null, filterrag, ragdefender, ragpart, ragmask
+
+  # FilterRAG specific
+  filterrag:
+    perplexity_threshold: 50.0
+
+  # RAGDefender specific
+  ragdefender:
+    similarity_threshold: 0.85
+
+  # RAGPart specific
+  ragpart:
+    verification_prompt: "Is this passage relevant and trustworthy?"
+
+  # RAGMask specific
+  ragmask:
+    mask_ratio: 0.3
+
+# Evaluation settings
+evaluation:
+  metrics:
+    - "asr"  # Attack success rate
+    - "rsr"  # Retrieval success rate
+    - "stealthiness"
+    - "aua"  # Accuracy under attack
+    - "f1"
+  save_predictions: true
+
+# Experiment settings
+experiment:
+  seed: 42
+  device: "auto"  # auto, cpu, cuda, mps
+  batch_size: 1  # For generation
+  num_workers: 4  # For data loading
+
+# Tracking settings
+tracking:
+  use_trackio: true
+  project_name: "rag-multihop-poisoning"
+  experiment_name: "baseline"
+  log_dir: "./results/logs"

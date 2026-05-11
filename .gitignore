@@ -1,0 +1,73 @@
+# Results only (datasets are centralized at /Volumes/LLModels/Datasets/RAG/)
+results/
+
+# Large files - models and datasets
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.h5
+*.pb
+*.onnx
+*.pkl
+*.pickle
+data/
+datasets/
+models/
+checkpoints/
+*.parquet
+*.arrow
+*.feather
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+wheels/
+*.egg-info
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Trackio
+.trackio/
+
+# Test coverage
+.coverage
+htmlcov/
+
