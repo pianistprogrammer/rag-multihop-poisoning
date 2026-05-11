@@ -1,9 +1,10 @@
 # Resume Functionality
 
-The experiment runner supports automatic checkpointing and resume functionality with two levels of protection:
+The experiment runner supports automatic checkpointing and resume functionality with three levels of protection:
 
 1. **Experiment-level checkpoints**: After each complete experiment
-2. **Poison passage caching**: Saves generated poisoned passages to avoid regenerating them
+2. **Incremental poison passage caching**: Saves every 10 queries during generation
+3. **FAISS index caching**: Saves built indices per dataset (NEW)
 
 ## How It Works
 
@@ -50,6 +51,38 @@ Restart:
 ```
 
 **This means**: You can safely interrupt at ANY time and lose at most 9 queries worth of work!
+
+### Level 3: FAISS Index Caching (NEW)
+
+**The slowest part** of setup is building the FAISS index (encoding millions of documents). This now gets cached:
+
+1. **Per-dataset Caching**: Each dataset's index is cached separately to `results/index_cache/{dataset_name}/`
+   - `nq` index: ~3.5M passages, ~2-3 hours to build
+   - `hotpotqa` index: ~400 passages, ~30 seconds
+   - `2wikimultihop` index: ~400 passages, ~30 seconds
+   - `musique` index: ~4K passages, ~2 minutes
+
+2. **Automatic Reuse**: When running experiments:
+   - First run on dataset → builds index + saves to cache
+   - Subsequent runs → loads from cache (instant!)
+   - Applies to all experiments using that dataset
+
+3. **One-time Cost**: The 2-3 hour index build for NQ happens only once, then is reused forever
+
+**Example**:
+```
+First run:
+  └─ Building index for nq... (2.5 hours)
+  └─ ✓ Index cached to results/index_cache/nq/
+  
+Second run (any experiment using NQ):
+  └─ Loading cached index for nq... (2 seconds) ✓
+  
+All future runs:
+  └─ Loading cached index (instant) ✓
+```
+
+**This solves**: The 2h 50min you just lost rebuilding the NQ index - it will now be reused!
 
 ## Checkpoint File Structure
 
@@ -121,6 +154,14 @@ If you want to regenerate poisoned passages (e.g., after changing attack code):
 
 ```bash
 rm -rf results/poison_cache/
+```
+
+### Clear Index Cache
+
+If you want to rebuild indices (e.g., after changing chunking parameters):
+
+```bash
+rm -rf results/index_cache/
 ```
 
 ### Resume from Partial Checkpoint

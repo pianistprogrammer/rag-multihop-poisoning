@@ -178,6 +178,11 @@ class ExperimentRunner:
         )
         return cache_dir / cache_file
 
+    def _get_index_cache_path(self, dataset_name: str) -> Path:
+        """Get cache directory for retriever index."""
+        cache_dir = self.output_dir / "index_cache" / dataset_name
+        return cache_dir
+
     def _load_poison_cache(self, config: ExperimentConfig) -> Optional[Dict]:
         """Load cached poisoned passages if available."""
         cache_path = self._get_poison_cache_path(config)
@@ -231,6 +236,25 @@ class ExperimentRunner:
 
         # Get dataset
         dataset = self.datasets[config.dataset_name]
+
+        # Check if we need to rebuild index for this dataset
+        index_cache_path = self._get_index_cache_path(config.dataset_name)
+        if index_cache_path.exists():
+            logger.info(f"Loading cached index for {config.dataset_name}...")
+            try:
+                self.retriever.load_index(str(index_cache_path))
+                logger.info(f"✓ Loaded cached index ({self.retriever.index.ntotal} vectors)")
+            except Exception as e:
+                logger.warning(f"Failed to load cached index: {e}")
+                logger.info(f"Rebuilding index for {config.dataset_name}...")
+                self.retriever.build_index(dataset.corpus, chunk_size=100)
+                self.retriever.save_index(str(index_cache_path))
+                logger.info(f"✓ Index cached to {index_cache_path}")
+        else:
+            logger.info(f"Building index for {config.dataset_name}...")
+            self.retriever.build_index(dataset.corpus, chunk_size=100)
+            self.retriever.save_index(str(index_cache_path))
+            logger.info(f"✓ Index cached to {index_cache_path}")
 
         # Sample queries
         import random
