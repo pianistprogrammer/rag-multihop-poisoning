@@ -103,7 +103,10 @@ class DenseRetriever:
 
         # Check if we can resume from cache
         if cache_dir:
-            cache_path = Path(cache_dir)
+            # Scope cache to this model so different retrievers never share files
+            model_slug = self.model_name.replace("/", "_").replace(":", "_")
+            cache_path = Path(cache_dir) / model_slug
+            cache_path.mkdir(parents=True, exist_ok=True)
             partial_embeddings_file = cache_path / "partial_embeddings.npy"
             partial_doc_ids_file = cache_path / "partial_doc_ids.npy"
             partial_texts_file = cache_path / "partial_texts.json"
@@ -180,7 +183,7 @@ class DenseRetriever:
                 remaining_embeddings = self._encode_with_incremental_save(
                     remaining_texts,
                     batch_size=batch_size,
-                    cache_dir=cache_dir,
+                    cache_dir=str(cache_path) if cache_dir else None,
                     save_every=save_every,
                     offset=resume_from,
                     existing_embeddings=existing_embeddings,
@@ -196,7 +199,7 @@ class DenseRetriever:
             embeddings = self._encode_with_incremental_save(
                 doc_texts,
                 batch_size=batch_size,
-                cache_dir=cache_dir,
+                cache_dir=str(cache_path) if cache_dir else None,
                 save_every=save_every,
                 offset=0,
                 existing_embeddings=None,

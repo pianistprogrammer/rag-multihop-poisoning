@@ -179,9 +179,9 @@ class ExperimentRunner:
         return cache_dir / cache_file
 
     def _get_index_cache_path(self, dataset_name: str) -> Path:
-        """Get cache directory for retriever index."""
-        cache_dir = self.output_dir / "index_cache" / dataset_name
-        return cache_dir
+        """Get model-scoped cache directory for retriever index."""
+        model_slug = self.retriever.model_name.replace("/", "_").replace(":", "_")
+        return self.output_dir / "index_cache" / dataset_name / model_slug
 
     def _load_poison_cache(self, config: ExperimentConfig) -> Optional[Dict]:
         """Load cached poisoned passages if available."""

@@ -158,7 +158,8 @@ def main():
     logger.info(f"Initializing retriever: {args.retriever_model}")
     retriever = DenseRetriever(model_name=args.retriever_model)
     first_dataset_name = dataset_names[0]
-    index_cache_dir = Path(args.output_dir) / "index_cache" / first_dataset_name
+    model_slug = args.retriever_model.replace("/", "_").replace(":", "_")
+    index_cache_dir = Path(args.output_dir) / "index_cache" / first_dataset_name / model_slug
     index_faiss_path = index_cache_dir / "index.faiss"
 
     if index_faiss_path.exists():

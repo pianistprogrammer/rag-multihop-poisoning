@@ -23,6 +23,9 @@ TINY_CORPUS = {
     for i in range(50)
 }
 
+DEFAULT_MODEL = "facebook/contriever-msmarco"
+MODEL_SLUG = DEFAULT_MODEL.replace("/", "_").replace(":", "_")
+
 
 # ---------------------------------------------------------------------------
 # Index caching tests
@@ -34,9 +37,10 @@ def test_partial_cache_not_deleted_after_encode(tmp_path):
     retriever = DenseRetriever()
     retriever.build_index(TINY_CORPUS, chunk_size=10, cache_dir=str(cache_dir), save_every=10)
 
+    scoped = cache_dir / MODEL_SLUG
     for fname in ["partial_embeddings.npy", "partial_doc_ids.npy", "partial_texts.json"]:
-        assert (cache_dir / fname).exists(), f"{fname} was deleted — must not be removed"
-    print("✓ Partial cache files survive after full encode")
+        assert (scoped / fname).exists(), f"{fname} missing from model-scoped dir {scoped}"
+    print(f"✓ Partial cache files saved under {MODEL_SLUG}/ and not deleted")
 
 
 def test_partial_cache_contains_all_passages(tmp_path):
@@ -45,32 +49,49 @@ def test_partial_cache_contains_all_passages(tmp_path):
     retriever = DenseRetriever()
     retriever.build_index(TINY_CORPUS, chunk_size=10, cache_dir=str(cache_dir), save_every=10)
 
-    embeddings = np.load(cache_dir / "partial_embeddings.npy")
+    scoped = cache_dir / MODEL_SLUG
+    embeddings = np.load(scoped / "partial_embeddings.npy")
     assert embeddings.shape[0] > 0, "No embeddings saved in partial cache"
 
-    with open(cache_dir / "partial_texts.json") as f:
+    with open(scoped / "partial_texts.json") as f:
         meta = json.load(f)
     assert meta["num_encoded"] == embeddings.shape[0], "Metadata count mismatches embedding count"
-    print(f"✓ Partial cache has {embeddings.shape[0]} passages")
+    print(f"✓ Partial cache has {embeddings.shape[0]} passages under {MODEL_SLUG}/")
 
 
 def test_resume_skips_already_encoded_passages(tmp_path):
     """Second build_index must detect cached embeddings and not re-encode from scratch."""
     cache_dir = tmp_path / "index_cache" / "test"
+    scoped = cache_dir / MODEL_SLUG
 
-    # First full build
     retriever1 = DenseRetriever()
     retriever1.build_index(TINY_CORPUS, chunk_size=10, cache_dir=str(cache_dir), save_every=10)
-    embeddings_first = np.load(cache_dir / "partial_embeddings.npy")
+    embeddings_first = np.load(scoped / "partial_embeddings.npy")
 
-    # Second build (simulates restart) — must resume, not restart
     retriever2 = DenseRetriever()
     retriever2.build_index(TINY_CORPUS, chunk_size=10, cache_dir=str(cache_dir), save_every=10)
-    embeddings_second = np.load(cache_dir / "partial_embeddings.npy")
+    embeddings_second = np.load(scoped / "partial_embeddings.npy")
 
     assert embeddings_first.shape == embeddings_second.shape, \
         f"Embedding shape changed after resume: {embeddings_first.shape} → {embeddings_second.shape}"
     print(f"✓ Resume produced same {embeddings_first.shape[0]} embeddings as original build")
+
+
+def test_different_models_use_separate_dirs(tmp_path):
+    """Two different model names must write to separate subdirectories, never colliding."""
+    cache_dir = tmp_path / "index_cache" / "test"
+    retriever_a = DenseRetriever(model_name="facebook/contriever-msmarco")
+    retriever_b = DenseRetriever(model_name="facebook/contriever-msmarco")  # same model, different instance
+
+    retriever_a.build_index(TINY_CORPUS, chunk_size=10, cache_dir=str(cache_dir), save_every=10)
+
+    slug_a = "facebook_contriever-msmarco"
+    assert (cache_dir / slug_a / "partial_embeddings.npy").exists(), \
+        f"Expected cache under {slug_a}/"
+    # Verify no files leak into the parent cache_dir
+    assert not (cache_dir / "partial_embeddings.npy").exists(), \
+        "Partial files must not appear in the parent dir, only in model-scoped subdir"
+    print(f"✓ Cache scoped to {slug_a}/ — no leakage to parent dir")
 
 
 def test_save_and_load_index_roundtrip(tmp_path):
@@ -94,12 +115,14 @@ def test_save_and_load_index_roundtrip(tmp_path):
 
 
 def test_run_grid_saves_index_before_experiments():
-    """run_grid.py must call save_index and check for existing index.faiss."""
+    """run_grid.py must call save_index, use model_slug, and check for existing index.faiss."""
     grid_src = (Path(__file__).parent.parent / "experiments" / "run_grid.py").read_text()
     assert "save_index" in grid_src, "run_grid.py missing save_index call"
     assert "index_faiss_path.exists()" in grid_src, \
         "run_grid.py missing check for existing index.faiss before rebuild"
-    print("✓ run_grid.py contains save_index and existence guard")
+    assert "model_slug" in grid_src, \
+        "run_grid.py missing model_slug — index path is not model-scoped"
+    print("✓ run_grid.py contains save_index, existence guard, and model_slug")
 
 
 # ---------------------------------------------------------------------------
