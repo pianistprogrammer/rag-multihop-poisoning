@@ -219,18 +219,6 @@ class DenseRetriever:
         self.index.add(embeddings.astype(np.float32))
         logger.info(f"Index built with {self.index.ntotal} vectors")
 
-        # Clean up partial cache if successful
-        if cache_dir:
-            cache_path = Path(cache_dir)
-            partial_files = [
-                cache_path / "partial_embeddings.npy",
-                cache_path / "partial_doc_ids.npy",
-                cache_path / "partial_texts.json",
-            ]
-            for f in partial_files:
-                if f.exists():
-                    f.unlink()
-            logger.info("Cleaned up partial cache files")
 
     def _encode_with_incremental_save(
         self,

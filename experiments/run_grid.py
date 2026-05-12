@@ -157,7 +157,17 @@ def main():
 
     logger.info(f"Initializing retriever: {args.retriever_model}")
     retriever = DenseRetriever(model_name=args.retriever_model)
-    retriever.build_index(first_dataset.corpus, chunk_size=100)
+    first_dataset_name = dataset_names[0]
+    index_cache_dir = Path(args.output_dir) / "index_cache" / first_dataset_name
+    index_faiss_path = index_cache_dir / "index.faiss"
+
+    if index_faiss_path.exists():
+        logger.info(f"Loading cached index for {first_dataset_name}...")
+        retriever.load_index(str(index_cache_dir))
+    else:
+        retriever.build_index(first_dataset.corpus, chunk_size=100, cache_dir=str(index_cache_dir))
+        retriever.save_index(str(index_cache_dir))
+        logger.info(f"✓ Index saved to {index_cache_dir}")
 
     logger.info(f"Initializing generator: {args.generator_model}")
     generator = OllamaGenerator(model_name=args.generator_model)
