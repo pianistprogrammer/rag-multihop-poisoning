@@ -314,7 +314,15 @@ class ExperimentRunner:
                     if query_id in dataset.qrels and dataset.qrels[query_id]:
                         gt_doc_id = list(dataset.qrels[query_id].keys())[0]
                         gt_doc = dataset.corpus.get(gt_doc_id, {})
-                        target_answer = gt_doc.get("text", "Unknown")[:100]
+                        # Extract first complete sentence as target (max 200 chars)
+                        text = gt_doc.get("text", "Unknown")
+                        # Find first sentence boundary
+                        target_answer = text[:50].strip()  # Safe default
+                        for sep in ['. ', '.\n', '! ', '?\n']:
+                            idx = text.find(sep)
+                            if 0 < idx < 200:
+                                target_answer = text[:idx+1].strip()
+                                break
                     else:
                         target_answer = "Synthetic target answer"
 
@@ -364,8 +372,17 @@ class ExperimentRunner:
                 if query_id in dataset.qrels and dataset.qrels[query_id]:
                     gt_doc_id = list(dataset.qrels[query_id].keys())[0]
                     gt_doc = dataset.corpus.get(gt_doc_id, {})
-                    # Use first sentence of ground truth as target
-                    target_answer = gt_doc.get("text", "Unknown")[:100]
+                    # Extract first complete sentence as target (max 200 chars)
+                    text = gt_doc.get("text", "Unknown")
+                    # Find first sentence boundary
+                    for sep in ['. ', '.\n', '! ', '?\n']:
+                        idx = text.find(sep)
+                        if 0 < idx < 200:
+                            target_answer = text[:idx+1].strip()
+                            break
+                    else:
+                        # No sentence boundary found, use first 50 chars (safer length)
+                        target_answer = text[:50].strip()
                 else:
                     target_answer = "Synthetic target answer"
 
@@ -453,7 +470,14 @@ class ExperimentRunner:
             if query_id in dataset.qrels and dataset.qrels[query_id]:
                 gt_doc_id = list(dataset.qrels[query_id].keys())[0]
                 gt_doc = dataset.corpus.get(gt_doc_id, {})
-                gt_answer = gt_doc.get("text", "Unknown")[:100]
+                # Extract first complete sentence (max 200 chars)
+                text = gt_doc.get("text", "Unknown")
+                gt_answer = text[:50].strip()  # Safe default
+                for sep in ['. ', '.\n', '! ', '?\n']:
+                    idx = text.find(sep)
+                    if 0 < idx < 200:
+                        gt_answer = text[:idx+1].strip()
+                        break
             else:
                 gt_answer = "Unknown"
             ground_truth_answers.append(gt_answer)
