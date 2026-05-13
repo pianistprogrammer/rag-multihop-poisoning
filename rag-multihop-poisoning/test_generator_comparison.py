@@ -15,7 +15,7 @@ from rag_poisoning.pipeline.rag_pipeline import RAGPipeline
 # Load dataset
 print("Loading NQ dataset...")
 dataset = BEIRDataset.load_from_processed(
-    "/Volumes/LLModels/Datasets/RAG/nq",
+    "C:\\Users\\jerem\\Documents\\Datasets\\RAG\\nq_processed",
     name="nq"
 )
 datasets = {"nq": dataset}

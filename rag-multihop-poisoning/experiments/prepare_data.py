@@ -36,7 +36,7 @@ def main():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="/Volumes/LLModels/Datasets/RAG",
+        default="C:\\Users\\jerem\\Documents\\Datasets\\RAG",
         help="Output directory for processed datasets",
     )
     parser.add_argument(

@@ -62,7 +62,7 @@ def main():
     parser.add_argument(
         "--data-dir",
         type=str,
-        default="/Volumes/LLModels/Datasets/RAG",
+        default="C:\\Users\\jerem\\Documents\\Datasets\\RAG",
         help="Directory containing processed datasets",
     )
     parser.add_argument(

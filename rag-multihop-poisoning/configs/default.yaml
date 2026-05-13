@@ -3,7 +3,7 @@
 
 # Paths
 paths:
-  data_dir: "/Volumes/LLModels/Datasets/RAG"  # Centralized dataset directory
+  data_dir: "C:\\Users\\jerem\\Documents\\Datasets\\RAG"  # Centralized dataset directory
   output_dir: "./results"  # Relative to project root
 
 # Dataset settings
