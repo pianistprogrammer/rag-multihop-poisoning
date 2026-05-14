@@ -1,5 +1,5 @@
 # Results only (datasets are centralized at /Volumes/LLModels/Datasets/RAG/)
-results/
+# results/  # Tracking results folder for GitHub
 poison_cache/
 index_cache/
 
